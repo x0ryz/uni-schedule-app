@@ -1,0 +1,7 @@
+services:
+  bot:
+    build: ./bot
+    container_name: schedule_bot
+    restart: always
+    environment:
+      TOKEN: ${TOKEN}
