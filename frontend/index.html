@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Schedule</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+    <style type="text/tailwindcss">
+        @theme {
+            --color-main: var(--tg-theme-bg-color);
+            --color-secondary: var(--tg-theme-secondary-bg-color);
+            --color-section: var(--tg-theme-section-bg-color);
+        }
+    </style>
+</head>
+
+<body class="bg-secondary font-sans">
+    <main id="schedule" class="p-3 flex flex-col gap-4 max-w-md mx-auto"></main>
+
+    <div id="loader" class="text-center text-gray-500 mt-6">Завантаження...</div>
+
+    <script>
+        const API_URL = ""
+        function parseTime(str) {
+            const [h, m] = str.split(":").map(Number);
+            return h * 60 + m;
+        }
+
+        function isActiveLesson(lesson) {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const startMinutes = parseTime(lesson.study_time_begin);
+            const endMinutes = parseTime(lesson.study_time_end);
+            return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+        }
+
+        function getLessonsUntilSaturday(data) {
+            const today = new Date();
+            const dayOfWeek = today.getDay();
+            let lessonsByDate = {};
+
+            data.forEach(item => {
+                const dt = new Date(item.full_date.split('.').reverse().join('-'));
+                if (dt >= today && dt.getDay() >= 2 && dt.getDay() <= 6) {
+                    if (!lessonsByDate[item.full_date]) lessonsByDate[item.full_date] = [];
+                    lessonsByDate[item.full_date].push(item);
+                }
+            });
+
+            const sortedDates = Object.keys(lessonsByDate).sort((a, b) => {
+                const da = new Date(a.split('.').reverse().join('-'));
+                const db = new Date(b.split('.').reverse().join('-'));
+                return da - db;
+            });
+
+            return { lessonsByDate, sortedDates };
+        }
+
+        async function loadSchedule() {
+            try {
+                const res = await fetch(API_URL);
+                const data = await res.json();
+
+                document.getElementById("loader").style.display = "none";
+                const container = document.getElementById("schedule");
+                container.innerHTML = "";
+
+                if (!data || data.length === 0) {
+                    container.innerHTML = `<p class="text-center text-gray-500">Немає пар</p>`;
+                    return;
+                }
+
+                const { lessonsByDate, sortedDates } = getLessonsUntilSaturday(data);
+
+                if (sortedDates.length === 0) {
+                    const tuesday = data.find(item => new Date(item.full_date.split('.').reverse().join('-')).getDay() === 2);
+                    if (tuesday) {
+                        sortedDates.push(tuesday.full_date);
+                        lessonsByDate[tuesday.full_date] = data.filter(d => d.full_date === tuesday.full_date);
+                    }
+                }
+
+                sortedDates.forEach(date => {
+                    const dayBlock = document.createElement("div");
+                    dayBlock.className = "flex flex-col gap-2";
+
+                    const weekDay = lessonsByDate[date][0].week_day;
+                    const header = document.createElement("div");
+                    header.className = "bg-section rounded-lg px-3 py-2 text-sm font-medium text-gray-700";
+                    header.innerText = `${weekDay}, ${date}`;
+                    dayBlock.appendChild(header);
+
+                    lessonsByDate[date].forEach(item => {
+                        const card = document.createElement("div");
+                        const active = isActiveLesson(item);
+                        card.className =
+                            "rounded-xl shadow p-4 flex flex-col gap-1 border " +
+                            (active ? "bg-blue-100 border-blue-400" : "bg-main border-gray-200");
+
+                        card.innerHTML = `
+                            <h2 class="text-base font-medium text-gray-800">${item.discipline}</h2>
+                            <p class="text-sm text-gray-600">${item.employee_short || "Викладач невідомий"}</p>
+                            <p class="text-sm text-gray-500">🕑 ${item.study_time} (${item.study_time_begin} – ${item.study_time_end})</p>
+                            <p class="text-sm text-gray-500">📍 ${item.cabinet || "TBA"}</p>
+                            <p class="text-sm text-gray-500">📘 ${item.study_type}</p>
+                            ${item.study_subgroup ? `<p class="text-sm text-gray-500">👥 Підгрупа: ${item.study_subgroup}</p>` : ""}
+                        `;
+
+                        dayBlock.appendChild(card);
+                    });
+
+                    container.appendChild(dayBlock);
+                });
+
+            } catch (err) {
+                document.getElementById("loader").innerText = "Помилка завантаження";
+                console.error(err);
+            }
+        }
+
+        loadSchedule();
+    </script>
+
+
+</body>
+
+</html>
