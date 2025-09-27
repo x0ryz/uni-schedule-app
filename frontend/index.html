@@ -12,17 +12,22 @@
             --color-main: var(--tg-theme-bg-color);
             --color-secondary: var(--tg-theme-secondary-bg-color);
             --color-section: var(--tg-theme-section-bg-color);
+            --color-title: var(--tg-theme-text-color);
+            --color-subtitle: var(--tg-theme-subtitle-text-color);
+            --color-header: var(--tg-theme-section-header-text-color);
+        }
+        :root {
+            margin-top: calc(var(--tg-content-safe-area-inset-top) + var(--tg-safe-area-inset-top));
         }
     </style>
 </head>
 
 <body class="bg-secondary font-sans">
-    <main id="schedule" class="p-3 flex flex-col gap-4 max-w-md mx-auto"></main>
-
-    <div id="loader" class="text-center text-gray-500 mt-6">Завантаження...</div>
+    <main id="schedule" class="flex flex-col gap-3 px-4"></main>
 
     <script>
         const API_URL = ""
+
         function parseTime(str) {
             const [h, m] = str.split(":").map(Number);
             return h * 60 + m;
@@ -63,12 +68,11 @@
                 const res = await fetch(API_URL);
                 const data = await res.json();
 
-                document.getElementById("loader").style.display = "none";
                 const container = document.getElementById("schedule");
                 container.innerHTML = "";
 
                 if (!data || data.length === 0) {
-                    container.innerHTML = `<p class="text-center text-gray-500">Немає пар</p>`;
+                    container.innerHTML = `<p class="text-center text-subtitle">Немає пар</p>`;
                     return;
                 }
 
@@ -84,11 +88,11 @@
 
                 sortedDates.forEach(date => {
                     const dayBlock = document.createElement("div");
-                    dayBlock.className = "flex flex-col gap-2";
+                    dayBlock.className = "flex flex-col gap-3";
 
                     const weekDay = lessonsByDate[date][0].week_day;
                     const header = document.createElement("div");
-                    header.className = "bg-section rounded-lg px-3 py-2 text-sm font-medium text-gray-700";
+                    header.className = "px-3 pt-3 text-sm font-medium text-header";
                     header.innerText = `${weekDay}, ${date}`;
                     dayBlock.appendChild(header);
 
@@ -96,16 +100,16 @@
                         const card = document.createElement("div");
                         const active = isActiveLesson(item);
                         card.className =
-                            "rounded-xl shadow p-4 flex flex-col gap-1 border " +
-                            (active ? "bg-blue-100 border-blue-400" : "bg-main border-gray-200");
+                            "rounded-xl p-5 flex flex-col gap-1 " +
+                            (active ? "bg-blue-100" : "bg-section");
 
                         card.innerHTML = `
-                            <h2 class="text-base font-medium text-gray-800">${item.discipline}</h2>
-                            <p class="text-sm text-gray-600">${item.employee_short || "Викладач невідомий"}</p>
-                            <p class="text-sm text-gray-500">🕑 ${item.study_time} (${item.study_time_begin} – ${item.study_time_end})</p>
-                            <p class="text-sm text-gray-500">📍 ${item.cabinet || "TBA"}</p>
-                            <p class="text-sm text-gray-500">📘 ${item.study_type}</p>
-                            ${item.study_subgroup ? `<p class="text-sm text-gray-500">👥 Підгрупа: ${item.study_subgroup}</p>` : ""}
+                            <h2 class="text-base font-medium text-title">${item.discipline}</h2>
+                            <p class="text-sm text-subtitle">${item.employee_short || "Викладач невідомий"}</p>
+                            <p class="text-sm text-subtitle">🕑 ${item.study_time} (${item.study_time_begin} – ${item.study_time_end})</p>
+                            <p class="text-sm text-subtitle">📍 ${item.cabinet || "TBA"}</p>
+                            <p class="text-sm text-subtitle">📘 ${item.study_type}</p>
+                            ${item.study_subgroup ? `<p class="text-sm text-subtitle">👥 Підгрупа: ${item.study_subgroup}</p>` : ""}
                         `;
 
                         dayBlock.appendChild(card);
