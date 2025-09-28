@@ -1,1 +1,16 @@
 @import "tailwindcss";
+
+@layer base {
+  @theme {
+    --color-main: var(--tg-theme-bg-color);
+    --color-secondary: var(--tg-theme-secondary-bg-color);
+    --color-section: var(--tg-theme-section-bg-color);
+    --color-title: var(--tg-theme-text-color);
+    --color-subtitle: var(--tg-theme-subtitle-text-color);
+    --color-header: var(--tg-theme-section-header-text-color);
+  }
+
+  :root {
+    margin-top: calc(var(--tg-content-safe-area-inset-top) + var(--tg-safe-area-inset-top));
+  }
+}
