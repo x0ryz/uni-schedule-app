@@ -7,4 +7,9 @@ export default defineConfig({
 		preact(),
 		tailwindcss()
 	],
+	server: {
+        allowedHosts: [
+          'noncensurable-obeisantly-val.ngrok-free.dev'
+        ],
+    },
 });

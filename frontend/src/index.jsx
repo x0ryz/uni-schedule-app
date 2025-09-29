@@ -4,8 +4,36 @@ import { useState, useEffect } from 'preact/hooks';
 export function App() {
 	const [data, setData] = useState([]);
 	const [loading, setLoading] = useState(true);
+	const [user, setUser] = useState(null);
+	const [authChecked, setAuthChecked] = useState(false);
 
 	useEffect(() => {
+		if (window.Telegram && window.Telegram.WebApp) {
+			const initData = window.Telegram.WebApp.initData;
+
+			fetch('https://uni-schedule-app.onrender.com/auth', {
+				method: 'POST',
+				headers: { 'Authorization': `Bearer ${initData}` },
+			})
+				.then((res) => res.json())
+				.then((json) => {
+					if (json.ok) {
+						setUser({ username: json.username });
+					} else {
+						console.error('Auth error:', json);
+					}
+					setAuthChecked(true);
+				})
+				.catch((err) => {
+					console.error('Auth request failed:', err);
+					setAuthChecked(true);
+				});
+		}
+	}, []);
+
+	useEffect(() => {
+		if (!authChecked) return;
+
 		fetch('https://uni-schedule-app.onrender.com/schedule')
 			.then((res) => res.json())
 			.then((json) => {
@@ -16,7 +44,7 @@ export function App() {
 				console.error('Error fetching:', err);
 				setLoading(false);
 			});
-	}, []);
+	}, [authChecked]);
 
 	if (loading)
 		return (

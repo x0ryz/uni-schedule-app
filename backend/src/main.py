@@ -1,6 +1,9 @@
 import httpx, json
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from telegram_webapp_auth.auth import WebAppUser
+
+from src.auth import get_current_user
 
 app = FastAPI()
 
@@ -57,3 +60,6 @@ async def get_schedule(
 
     return filtered
 
+@app.post("/auth")
+async def send_message(user: WebAppUser = Depends(get_current_user)):
+    return {"ok": True, "username": user.username}

@@ -8,6 +8,7 @@
 	},
 	"dependencies": {
 		"@tailwindcss/vite": "^4.1.13",
+		"lucide-preact": "^0.544.0",
 		"preact": "^10.26.9",
 		"tailwindcss": "^4.1.13"
 	},
