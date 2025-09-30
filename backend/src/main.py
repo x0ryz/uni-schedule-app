@@ -40,7 +40,11 @@ async def get_schedule(
     user: WebAppUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
-    result = await session.execute(select(User).where(User.telegram_id == user.id).options(selectinload(User.group)))
+    result = await session.execute(
+        select(User)
+        .where(User.telegram_id == user.id)
+        .options(selectinload(User.group))
+    )
     user_in_db = result.scalar_one_or_none()
 
     if not user_in_db:
@@ -50,6 +54,18 @@ async def get_schedule(
         raise HTTPException(status_code=400, detail="User has no group assigned")
     
     group = user_in_db.group
+
+    hidden_result = await session.execute(
+        select(UserHiddenSubject)
+        .where(UserHiddenSubject.user_id == user_in_db.id)
+        .options(selectinload(UserHiddenSubject.subject))
+    )
+    hidden_subjects = hidden_result.scalars().all()
+    
+    hidden_subjects_set = {
+        (hs.subject.name, hs.subject.teacher, hs.subject.study_type, hs.subject.subgroup)
+        for hs in hidden_subjects
+    }
 
     params = {
         "aVuzID": 11613,
@@ -79,10 +95,17 @@ async def get_schedule(
         return {"error": "Cannot parse JSON from API", "raw": text}
 
     exclude = {"__type", "employee"}
-    filtered = [
-        {k: v for k, v in item.items() if k not in exclude}
-        for item in data["d"]
-    ]
+    filtered = []
+    
+    for item in data["d"]:
+        discipline = item.get("discipline", "")
+        employee_short = item.get("employee_short", "")
+        study_type = item.get("study_type", "")
+        subgroup = item.get("subgroup")
+        
+        if (discipline, employee_short, study_type, subgroup) not in hidden_subjects_set:
+            filtered_item = {k: v for k, v in item.items() if k not in exclude}
+            filtered.append(filtered_item)
 
     return filtered
 
