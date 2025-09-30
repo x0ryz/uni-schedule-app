@@ -44,6 +44,8 @@ class UserHiddenSubject(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), nullable=False)
 
+    subject: Mapped["Subject"] = relationship("Subject")
+
     __table_args__ = (
         UniqueConstraint("user_id", "subject_id", name="uq_user_subject"),
     )

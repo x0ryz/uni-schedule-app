@@ -144,3 +144,35 @@ async def hide_subject(
         raise HTTPException(status_code=400, detail="Subject already hidden")
 
     return {"message": f"Subject '{name}' hidden for user {user_in_db.username}"}
+
+@app.get('/get_hidden_subjects')
+async def get_hidden_subjects(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    result = await session.execute(
+        select(User).where(User.telegram_id == user.id).options(selectinload(User.group))
+    )
+    user_in_db: User | None = result.scalar_one_or_none()
+    if not user_in_db:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = await session.execute(
+        select(UserHiddenSubject)
+        .where(UserHiddenSubject.user_id == user_in_db.id)
+        .options(selectinload(UserHiddenSubject.subject))
+    )
+    hidden_subjects: list[UserHiddenSubject] = result.scalars().all()
+
+    response = [
+        {
+            "id": hs.subject.id,
+            "discipline": hs.subject.name,
+            "employee_short": hs.subject.teacher,
+            "study_type": hs.subject.study_type,
+            "subgroup": hs.subject.subgroup,
+        }
+        for hs in hidden_subjects
+    ]
+
+    return {"hidden_subjects": response}

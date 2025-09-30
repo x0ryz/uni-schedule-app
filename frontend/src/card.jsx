@@ -108,7 +108,7 @@ export function Card({
                 <p class="text-sm text-subtitle">
                     🕑 {study_time} ({study_time_begin} – {study_time_end})
                 </p>
-                <p class="text-sm text-subtitle">📍 {cabinet || 'TBA'}</p>
+                <p class="text-sm text-subtitle">📍 {cabinet}</p>
                 <p class="text-sm text-subtitle">📘 {study_type}</p>
             </div>
         </div>
