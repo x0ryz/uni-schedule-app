@@ -11,6 +11,7 @@ export function Card({
     subgroup,
     onDelete,
     apiUrl,
+    isCardDragging,
 }) {
     const [dragX, setDragX] = useState(0);
     const [dragging, setDragging] = useState(false);
@@ -32,14 +33,14 @@ export function Card({
         const deltaX = e.touches[0].clientX - startX.current;
         const deltaY = e.touches[0].clientY - startY.current;
 
-        // Визначаємо напрямок лише один раз
         if (!direction.current) {
             if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < 0) {
-                direction.current = 'horizontal'; // тільки справа наліво
+                direction.current = 'horizontal';
+                isCardDragging.current = true;
             } else if (Math.abs(deltaY) > Math.abs(deltaX)) {
                 direction.current = 'vertical';
             } else {
-                return; // невизначений, нічого не робимо
+                return;
             }
         }
 
@@ -82,6 +83,7 @@ export function Card({
         setDragX(0);
         setDragging(false);
         direction.current = null;
+        isCardDragging.current = false; // скидаємо стан після свайпу
         requestSent.current = false;
     };
 

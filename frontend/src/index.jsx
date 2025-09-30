@@ -6,8 +6,12 @@ export function App() {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [authChecked, setAuthChecked] = useState(false);
+    const [showArchiveLink, setShowArchiveLink] = useState(false);
     const apiUrl = import.meta.env.VITE_API_URL;
-    const scrolling = useRef(null);
+    const startY = useRef(0);
+    const scrollTop = useRef(0);
+
+    const isCardDragging = useRef(false);
 
     useEffect(() => {
         if (!window.Telegram?.WebApp) return;
@@ -25,6 +29,20 @@ export function App() {
             .then((json) => { setData(json); setLoading(false); })
             .catch(() => setLoading(false));
     }, [authChecked]);
+
+    const handleTouchStart = (e) => {
+        startY.current = e.touches[0].clientY;
+        scrollTop.current = window.scrollY || window.pageYOffset;
+        setShowArchiveLink(false);
+    };
+
+    const handleTouchMove = (e) => {
+        const deltaY = e.touches[0].clientY - startY.current;
+
+        if (deltaY > 25 && scrollTop.current <= 5 && !isCardDragging.current) {
+            setShowArchiveLink(true);
+        }
+    };
 
     if (loading)
         return (
@@ -44,9 +62,18 @@ export function App() {
 
     return (
         <div
-            onTouchStart={() => (scrolling.current = null)}
             class="flex flex-col gap-3"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
         >
+            {showArchiveLink && (
+                <div class="px-3 py-3 text-center">
+                    <a href="#" class="text-blue-500 font-medium">
+                        Приховані предмети
+                    </a>
+                </div>
+            )}
+
             {Object.entries(grouped).map(([date, items]) => (
                 <div key={date} class="flex flex-col gap-3">
                     <h2 class="px-3 pt-3 text-sm font-medium text-header">
@@ -57,6 +84,7 @@ export function App() {
                             key={i}
                             {...item}
                             apiUrl={apiUrl}
+                            isCardDragging={isCardDragging}
                         />
                     ))}
                 </div>
