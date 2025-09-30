@@ -1,10 +1,14 @@
 import httpx, json
 from datetime import date, timedelta
 from fastapi import FastAPI, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from fastapi.middleware.cors import CORSMiddleware
 from telegram_webapp_auth.auth import WebAppUser
 
 from src.auth import get_current_user
+from src.database import get_session
+from src.models import User
 
 app = FastAPI()
 
@@ -69,5 +73,12 @@ async def get_schedule(
     return filtered
 
 @app.post("/auth")
-async def send_message(user: WebAppUser = Depends(get_current_user)):
-    return {"ok": True, "username": user.username}
+async def send_message(user: WebAppUser = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(User).where(User.username == user.username))
+    user_in_db = result.scalar_one_or_none()
+
+    if not user_in_db:
+        session.add(User(telegram_id=user.id, username=user.username))
+
+    await session.commit()
+    return {"ok": True, "username": user}

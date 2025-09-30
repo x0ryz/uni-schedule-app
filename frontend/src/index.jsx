@@ -7,11 +7,13 @@ export function App() {
 	const [user, setUser] = useState(null);
 	const [authChecked, setAuthChecked] = useState(false);
 
+	const apiUrl = import.meta.env.VITE_API_URL;
+
 	useEffect(() => {
 		if (window.Telegram && window.Telegram.WebApp) {
 			const initData = window.Telegram.WebApp.initData;
 
-			fetch('https://uni-schedule-app.onrender.com/auth', {
+			fetch(`${apiUrl}/auth`, {
 				method: 'POST',
 				headers: { 'Authorization': `Bearer ${initData}` },
 			})
@@ -34,7 +36,7 @@ export function App() {
 	useEffect(() => {
 		if (!authChecked) return;
 
-		fetch('https://uni-schedule-app.onrender.com/schedule')
+		fetch(`${apiUrl}/schedule`)
 			.then((res) => res.json())
 			.then((json) => {
 				setData(json);

@@ -1,4 +1,0 @@
-python-telegram-bot
-python-dotenv
-fastapi[standard]
-telegram-webapp-auth

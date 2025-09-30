@@ -1,0 +1,7 @@
+python-dotenv
+fastapi[standard]
+telegram-webapp-auth
+SQLAlchemy
+asyncpg
+alembic
+psycopg2-binary
