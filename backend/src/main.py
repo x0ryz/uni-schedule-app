@@ -1,4 +1,5 @@
 import httpx, json
+from datetime import date, timedelta
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from telegram_webapp_auth.auth import WebAppUser
@@ -17,12 +18,19 @@ app.add_middleware(
 
 BASE_URL = "https://vnz.osvita.net/WidgetSchedule.asmx/GetScheduleDataX"
 
+today = date.today()
+days_until_saturday = (5 - today.weekday()) % 7
+if days_until_saturday == 0:
+    days_until_saturday = 7  
+
+end_week = today + timedelta(days=days_until_saturday)
+
 @app.get("/schedule")
 async def get_schedule(
     aVuzID: int = 11613,
     aStudyGroupID: str = "3POJ9CKXSCAW",
-    aStartDate: str = "29.09.2025",
-    aEndDate: str = "06.10.2025",
+    aStartDate: str = today.strftime("%d.%m.%Y"),
+    aEndDate: str = end_week.strftime("%d.%m.%Y"),
     aStudyTypeID: str | None = None,
 ):
     params = {
