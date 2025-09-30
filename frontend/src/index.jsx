@@ -36,17 +36,29 @@ export function App() {
 	useEffect(() => {
 		if (!authChecked) return;
 
-		fetch(`${apiUrl}/schedule`)
-			.then((res) => res.json())
-			.then((json) => {
-				setData(json);
-				setLoading(false);
+		if (window.Telegram && window.Telegram.WebApp) {
+			const initData = window.Telegram.WebApp.initData;
+
+			fetch(`${apiUrl}/schedule`, {
+				headers: {
+					'Authorization': `Bearer ${initData}`,
+				},
 			})
-			.catch((err) => {
-				console.error('Error fetching:', err);
-				setLoading(false);
-			});
+				.then((res) => {
+					if (!res.ok) throw new Error(`HTTP ${res.status}`);
+					return res.json();
+				})
+				.then((json) => {
+					setData(json);
+					setLoading(false);
+				})
+				.catch((err) => {
+					console.error('Error fetching schedule:', err);
+					setLoading(false);
+				});
+		}
 	}, [authChecked]);
+
 
 	if (loading)
 		return (

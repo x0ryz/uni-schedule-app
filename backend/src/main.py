@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from fastapi.middleware.cors import CORSMiddleware
 from telegram_webapp_auth.auth import WebAppUser
 
@@ -32,17 +33,28 @@ end_week = today + timedelta(days=days_until_saturday)
 @app.get("/schedule")
 async def get_schedule(
     aVuzID: int = 11613,
-    aStudyGroupID: str = "3POJ9CKXSCAW",
     aStartDate: str = today.strftime("%d.%m.%Y"),
     aEndDate: str = end_week.strftime("%d.%m.%Y"),
-    aStudyTypeID: str | None = None,
+    user: WebAppUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
 ):
+    result = await session.execute(select(User).where(User.telegram_id == user.id).options(selectinload(User.group)))
+    user_in_db = result.scalar_one_or_none()
+
+    if not user_in_db:
+        raise HTTPException(status_code=404, detail="User not found in DB")
+
+    if not user_in_db.group_id:
+        raise HTTPException(status_code=400, detail="User has no group assigned")
+    
+    group = user_in_db.group
+
     params = {
         "aVuzID": aVuzID,
-        "aStudyGroupID": f'"{aStudyGroupID}"',
+        "aStudyGroupID": f'"{group.site_id}"',
         "aStartDate": f'"{aStartDate}"',
         "aEndDate": f'"{aEndDate}"',
-        "aStudyTypeID": aStudyTypeID
+        "aStudyTypeID": None
     }
 
     headers = {
