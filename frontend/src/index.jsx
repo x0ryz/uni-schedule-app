@@ -46,6 +46,19 @@ export function App() {
             .catch(() => setLoading(false));
     };
 
+    const handleDelete = (itemToDelete) => {
+        setData(prevData => prevData.filter(item => {
+            // Перевіряємо чи співпадають всі характеристики
+            const disciplineMatch = item.discipline === itemToDelete.discipline;
+            const teacherMatch = (item.employee_short || '') === (itemToDelete.employee_short || '');
+            const typeMatch = item.study_type === itemToDelete.study_type;
+            const subgroupMatch = (item.subgroup || null) === (itemToDelete.subgroup || null);
+            
+            // Якщо всі характеристики співпадають - видаляємо (повертаємо false)
+            return !(disciplineMatch && teacherMatch && typeMatch && subgroupMatch);
+        }));
+    };
+
     const handleTouchStart = (e) => {
         startY.current = e.touches[0].clientY;
         lastY.current = startY.current;
@@ -147,6 +160,7 @@ export function App() {
                             {...item}
                             apiUrl={apiUrl}
                             isCardDragging={isCardDragging}
+                            onDelete={() => handleDelete(item)}
                         />
                     ))}
                 </div>
