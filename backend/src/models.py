@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, String, DateTime, BigInteger, Column, Table
+from sqlalchemy import ForeignKey, String, BigInteger, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base
@@ -13,7 +13,7 @@ class Group(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
 
     users: Mapped[list["User"]] = relationship(back_populates="group")
-
+    subjects: Mapped[list["Subject"]] = relationship(back_populates="group")
 
 class User(Base):
     __tablename__ = "users"
@@ -24,3 +24,26 @@ class User(Base):
 
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=True)
     group: Mapped["Group"] = relationship(back_populates="users")
+
+class Subject(Base):
+    __tablename__ = "subjects"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    teacher: Mapped[str] = mapped_column(String, nullable=False)
+    study_type: Mapped[str] = mapped_column(String, nullable=False)
+    subgroup: Mapped[str] = mapped_column(String, nullable=True)
+
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
+    group: Mapped["Group"] = relationship(back_populates="subjects")
+
+class UserHiddenSubject(Base):
+    __tablename__ = "user_hidden_subjects"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "subject_id", name="uq_user_subject"),
+    )

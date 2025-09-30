@@ -4,12 +4,15 @@ from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from fastapi.middleware.cors import CORSMiddleware
 from telegram_webapp_auth.auth import WebAppUser
 
+from pydantic import BaseModel
+
 from src.auth import get_current_user
 from src.database import get_session
-from src.models import User
+from src.models import User, Subject, UserHiddenSubject
 
 app = FastAPI()
 
@@ -32,7 +35,6 @@ end_week = today + timedelta(days=days_until_saturday)
 
 @app.get("/schedule")
 async def get_schedule(
-    aVuzID: int = 11613,
     aStartDate: str = today.strftime("%d.%m.%Y"),
     aEndDate: str = end_week.strftime("%d.%m.%Y"),
     user: WebAppUser = Depends(get_current_user),
@@ -50,7 +52,7 @@ async def get_schedule(
     group = user_in_db.group
 
     params = {
-        "aVuzID": aVuzID,
+        "aVuzID": 11613,
         "aStudyGroupID": f'"{group.site_id}"',
         "aStartDate": f'"{aStartDate}"',
         "aEndDate": f'"{aEndDate}"',
@@ -94,3 +96,51 @@ async def send_message(user: WebAppUser = Depends(get_current_user), session: As
 
     await session.commit()
     return {"ok": True, "username": user}
+
+class HideSubjectRequest(BaseModel):
+    name: str
+    teacher: str
+    study_type: str
+    subgroup: str | None = None
+
+@app.post("/hide_subject")
+async def hide_subject(
+    request: HideSubjectRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    name = request.name
+    teacher = request.teacher
+    study_type = request.study_type
+    subgroup = request.subgroup
+
+    result = await session.execute(select(User).where(User.telegram_id == user.id).options(selectinload(User.group)))
+    user_in_db: User | None = result.scalar_one_or_none()
+    if not user_in_db:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = await session.execute(
+        select(Subject)
+        .where(Subject.name == name)
+        .where(Subject.teacher == teacher)
+        .where(Subject.study_type == study_type)
+        .where(Subject.subgroup == subgroup)
+        .where(Subject.group_id == user_in_db.group.id)
+    )
+    subject_in_db: Subject | None = result.scalar_one_or_none()
+
+    if not subject_in_db:
+        subject_in_db = Subject(name=name, teacher=teacher, study_type=study_type, subgroup=subgroup, group_id=user_in_db.group.id)
+        session.add(subject_in_db)
+        await session.commit()
+        await session.refresh(subject_in_db)
+
+    hidden = UserHiddenSubject(user_id=user_in_db.id, subject_id=subject_in_db.id)
+    session.add(hidden)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail="Subject already hidden")
+
+    return {"message": f"Subject '{name}' hidden for user {user_in_db.username}"}
