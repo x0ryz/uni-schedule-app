@@ -8,7 +8,7 @@ export function App() {
     const [loading, setLoading] = useState(true);
     const [authChecked, setAuthChecked] = useState(false);
     const [showArchiveLink, setShowArchiveLink] = useState(false);
-    const [currentView, setCurrentView] = useState('schedule'); // 'schedule' | 'hidden'
+    const [currentView, setCurrentView] = useState('schedule');
     const apiUrl = import.meta.env.VITE_API_URL;
 
     const startY = useRef(0);
@@ -24,16 +24,42 @@ export function App() {
             .catch(() => setAuthChecked(true));
     }, []);
 
-    useEffect(() => {
-        if (!authChecked || !window.Telegram?.WebApp) return;
+    const fetchSchedule = async () => {
+        if (!window.Telegram?.WebApp) return;
+        setLoading(true);
         const initData = window.Telegram.WebApp.initData;
-        fetch(`${apiUrl}/schedule`, { headers: { Authorization: `Bearer ${initData}` } })
-            .then(res => res.json())
-            .then(json => { setData(json); setLoading(false); })
-            .catch(() => setLoading(false));
-    }, [authChecked]);
+        try {
+            const res = await fetch(`${apiUrl}/schedule`, { headers: { Authorization: `Bearer ${initData}` } });
+            const json = await res.json();
+            setData(json);
+        } catch (err) {
+            console.error('Помилка завантаження розкладу', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    // Керування Back Button
+    const loadHiddenSubjects = async () => {
+        if (!window.Telegram?.WebApp) return;
+        setLoading(true);
+        const initData = window.Telegram.WebApp.initData;
+        try {
+            const res = await fetch(`${apiUrl}/get_hidden_subjects`, { headers: { Authorization: `Bearer ${initData}` } });
+            const json = await res.json();
+            setHiddenData(json.hidden_subjects);
+        } catch (err) {
+            console.error('Помилка завантаження прихованих предметів', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (authChecked && currentView === 'schedule') {
+            fetchSchedule();
+        }
+    }, [authChecked, currentView]);
+
     useEffect(() => {
         if (!window.Telegram?.WebApp) return;
 
@@ -44,8 +70,7 @@ export function App() {
             setShowArchiveLink(false);
         };
 
-        // Очищуємо попередні слухачі перед додаванням нового
-        backButton.offClick(handleBackButton);
+        backButton.offClick();
 
         if (currentView === 'hidden') {
             backButton.onClick(handleBackButton);
@@ -54,23 +79,9 @@ export function App() {
             backButton.hide();
         }
 
-        return () => {
-            backButton.offClick(handleBackButton);
-        };
+        return () => backButton.offClick();
     }, [currentView]);
 
-    const loadHiddenSubjects = () => {
-        if (!window.Telegram?.WebApp) return;
-        const initData = window.Telegram.WebApp.initData;
-        setLoading(true);
-        fetch(`${apiUrl}/get_hidden_subjects`, { headers: { Authorization: `Bearer ${initData}` } })
-            .then(res => res.json())
-            .then(json => { 
-                setHiddenData(json.hidden_subjects); 
-                setLoading(false); 
-            })
-            .catch(() => setLoading(false));
-    };
 
     const handleDelete = (itemToDelete) => {
         if (currentView === 'schedule') {
@@ -79,7 +90,6 @@ export function App() {
                 const teacherMatch = (item.employee_short || '') === (itemToDelete.employee_short || '');
                 const typeMatch = item.study_type === itemToDelete.study_type;
                 const subgroupMatch = (item.subgroup || null) === (itemToDelete.subgroup || null);
-                
                 return !(disciplineMatch && teacherMatch && typeMatch && subgroupMatch);
             }));
         } else {
@@ -94,36 +104,29 @@ export function App() {
     };
 
     const handleTouchMove = (e) => {
-        if (currentView === 'hidden') return; // Не показувати меню архіва на сторінці прихованих
-        
+        if (currentView === 'hidden') return;
+
         const currentY = e.touches[0].clientY;
         const deltaY = currentY - lastY.current;
 
         if (deltaY > 5 && scrollTop.current <= 5 && !isCardDragging.current) {
             setShowArchiveLink(true);
         }
-
-        if (deltaY < -5) {
-            setShowArchiveLink(false);
-        }
+        if (deltaY < -5) setShowArchiveLink(false);
 
         lastY.current = currentY;
     };
 
-    const handleTouchEnd = () => {};
+    const handleTouchEnd = () => { };
 
     if (loading) {
-        if (currentView === 'hidden') {
-            return (
-                <div class="flex flex-col gap-3 mt-3">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} class="h-[120px] bg-section px-3 pt-3 rounded-xl animate-pulse"></div>
-                    ))}
-                </div>
-            );
-        }
-
-        return (
+        return currentView === 'hidden' ? (
+            <div class="flex flex-col gap-3 mt-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} class="h-[120px] bg-section px-3 pt-3 rounded-xl animate-pulse"></div>
+                ))}
+            </div>
+        ) : (
             <div class="flex flex-col gap-4">
                 {['Понеділок', 'Вівторок'].map((day, index) => (
                     <div key={index} class="flex flex-col gap-3">
@@ -144,10 +147,10 @@ export function App() {
                     <p class="text-center text-subtitle mt-10">Немає прихованих предметів</p>
                 ) : (
                     hiddenData.map((item, i) => (
-                        <Card 
-                            key={i} 
-                            {...item} 
-                            apiUrl={apiUrl} 
+                        <Card
+                            key={i}
+                            {...item}
+                            apiUrl={apiUrl}
                             isCardDragging={isCardDragging}
                             onDelete={() => handleDelete(item)}
                             isHiddenView={true}
@@ -174,13 +177,13 @@ export function App() {
         >
             {showArchiveLink && (
                 <div class="px-3 py-2 text-center">
-                    <a 
-                        href="#" 
+                    <a
+                        href="#"
                         class="text-link text-sm font-medium"
-                        onClick={(e) => { 
-                            e.preventDefault(); 
-                            setCurrentView('hidden'); 
-                            loadHiddenSubjects(); 
+                        onClick={(e) => {
+                            e.preventDefault();
+                            setCurrentView('hidden');
+                            loadHiddenSubjects();
                         }}
                     >
                         Приховані предмети

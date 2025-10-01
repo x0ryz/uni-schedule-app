@@ -155,7 +155,7 @@ async def authenticate_user(
     return {"ok": True, "username": user_in_db.username}
 
 
-class HideSubjectRequest(BaseModel):
+class SubjectRequest(BaseModel):
     name: str
     teacher: str
     study_type: str
@@ -164,7 +164,7 @@ class HideSubjectRequest(BaseModel):
 
 @app.post("/hide_subject")
 async def hide_subject(
-    request: HideSubjectRequest,
+    request: SubjectRequest,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
@@ -228,3 +228,40 @@ async def get_hidden_subjects(
     ]
 
     return {"hidden_subjects": response}
+
+
+@app.post("/unhide_subject")
+async def restore_subject(
+    request: SubjectRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    user_in_db = await get_user_from_db(user.id, session)
+
+    result = await session.execute(
+        select(Subject)
+        .where(Subject.name == request.name)
+        .where(Subject.teacher == request.teacher)
+        .where(Subject.study_type == request.study_type)
+        .where(Subject.subgroup == request.subgroup)
+        .where(Subject.group_id == user_in_db.group.id)
+    )
+    subject_in_db: Subject | None = result.scalar_one_or_none()
+
+    if not subject_in_db:
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    result = await session.execute(
+        select(UserHiddenSubject)
+        .where(UserHiddenSubject.user_id == user_in_db.id)
+        .where(UserHiddenSubject.subject_id == subject_in_db.id)
+    )
+    hidden_subject: UserHiddenSubject | None = result.scalar_one_or_none()
+
+    if not hidden_subject:
+        raise HTTPException(status_code=400, detail="Subject is not hidden")
+
+    await session.delete(hidden_subject)
+    await session.commit()
+
+    return {"message": f"Subject '{request.name}' restored for user {user_in_db.username}"}

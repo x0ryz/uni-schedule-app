@@ -94,7 +94,6 @@ export function Card({
         requestSent.current = false;
     };
 
-    // Компактний вигляд для прихованих предметів (без деталей розкладу)
     if (isHiddenView) {
         return (
             <div class="relative w-full">
@@ -120,7 +119,6 @@ export function Card({
         );
     }
 
-    // Повний вигляд для розкладу
     return (
         <div class="relative w-full">
             <div class="absolute inset-0 flex items-center justify-end pr-10 bg-red-500 rounded-xl z-0">
