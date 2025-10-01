@@ -1,18 +1,19 @@
-import httpx, json
+import json
 from datetime import date, timedelta
-from fastapi import FastAPI, HTTPException, Depends
+
+import httpx
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy.exc import IntegrityError
-from fastapi.middleware.cors import CORSMiddleware
 from telegram_webapp_auth.auth import WebAppUser
-
-from pydantic import BaseModel
 
 from src.auth import get_current_user
 from src.database import get_session
-from src.models import User, Subject, UserHiddenSubject
+from src.models import Subject, User, UserHiddenSubject
 
 app = FastAPI()
 
@@ -33,6 +34,49 @@ if days_until_saturday == 0:
 
 end_week = today + timedelta(days=days_until_saturday)
 
+
+async def get_user_from_db(telegram_id: int, session: AsyncSession) -> User:
+    """Get user from database by telegram_id"""
+    result = await session.execute(
+        select(User)    
+        .where(User.telegram_id == telegram_id)
+        .options(selectinload(User.group))
+    )
+    user_in_db = result.scalar_one_or_none()
+    
+    if not user_in_db:
+        raise HTTPException(status_code=404, detail="User not found in DB")
+    
+    return user_in_db
+
+
+async def ensure_user_exists(user: WebAppUser, session: AsyncSession) -> User:
+    """Ensure that the user exists in the database, create if not"""
+    result = await session.execute(
+        select(User).where(User.telegram_id == user.id)
+    )
+    user_in_db = result.scalar_one_or_none()
+
+    if not user_in_db:
+        user_in_db = User(telegram_id=user.id, username=user.username)
+        session.add(user_in_db)
+        await session.commit()
+        await session.refresh(user_in_db)
+    
+    return user_in_db
+
+
+def format_subject_response(subject: Subject) -> dict:
+    """Format subject for API response"""
+    return {
+        "id": subject.id,
+        "discipline": subject.name,
+        "employee_short": subject.teacher,
+        "study_type": subject.study_type,
+        "subgroup": subject.subgroup,
+    }
+
+
 @app.get("/schedule")
 async def get_schedule(
     aStartDate: str = today.strftime("%d.%m.%Y"),
@@ -40,15 +84,7 @@ async def get_schedule(
     user: WebAppUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
-    result = await session.execute(
-        select(User)
-        .where(User.telegram_id == user.id)
-        .options(selectinload(User.group))
-    )
-    user_in_db = result.scalar_one_or_none()
-
-    if not user_in_db:
-        raise HTTPException(status_code=404, detail="User not found in DB")
+    user_in_db = await get_user_from_db(user.id, session)
 
     if not user_in_db.group_id:
         raise HTTPException(status_code=400, detail="User has no group assigned")
@@ -109,22 +145,22 @@ async def get_schedule(
 
     return filtered
 
+
 @app.post("/auth")
-async def send_message(user: WebAppUser = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(User).where(User.username == user.username))
-    user_in_db = result.scalar_one_or_none()
+async def authenticate_user(
+    user: WebAppUser = Depends(get_current_user), 
+    session: AsyncSession = Depends(get_session)
+):
+    user_in_db = await ensure_user_exists(user, session)
+    return {"ok": True, "username": user_in_db.username}
 
-    if not user_in_db:
-        session.add(User(telegram_id=user.id, username=user.username))
-
-    await session.commit()
-    return {"ok": True, "username": user}
 
 class HideSubjectRequest(BaseModel):
     name: str
     teacher: str
     study_type: str
     subgroup: str | None = None
+
 
 @app.post("/hide_subject")
 async def hide_subject(
@@ -137,10 +173,7 @@ async def hide_subject(
     study_type = request.study_type
     subgroup = request.subgroup
 
-    result = await session.execute(select(User).where(User.telegram_id == user.id).options(selectinload(User.group)))
-    user_in_db: User | None = result.scalar_one_or_none()
-    if not user_in_db:
-        raise HTTPException(status_code=404, detail="User not found")
+    user_in_db = await get_user_from_db(user.id, session)
 
     result = await session.execute(
         select(Subject)
@@ -153,7 +186,13 @@ async def hide_subject(
     subject_in_db: Subject | None = result.scalar_one_or_none()
 
     if not subject_in_db:
-        subject_in_db = Subject(name=name, teacher=teacher, study_type=study_type, subgroup=subgroup, group_id=user_in_db.group.id)
+        subject_in_db = Subject(
+            name=name, 
+            teacher=teacher, 
+            study_type=study_type, 
+            subgroup=subgroup, 
+            group_id=user_in_db.group.id
+        )
         session.add(subject_in_db)
         await session.commit()
         await session.refresh(subject_in_db)
@@ -168,17 +207,13 @@ async def hide_subject(
 
     return {"message": f"Subject '{name}' hidden for user {user_in_db.username}"}
 
+
 @app.get('/get_hidden_subjects')
 async def get_hidden_subjects(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
-    result = await session.execute(
-        select(User).where(User.telegram_id == user.id).options(selectinload(User.group))
-    )
-    user_in_db: User | None = result.scalar_one_or_none()
-    if not user_in_db:
-        raise HTTPException(status_code=404, detail="User not found")
+    user_in_db = await get_user_from_db(user.id, session)
 
     result = await session.execute(
         select(UserHiddenSubject)
@@ -188,13 +223,7 @@ async def get_hidden_subjects(
     hidden_subjects: list[UserHiddenSubject] = result.scalars().all()
 
     response = [
-        {
-            "id": hs.subject.id,
-            "discipline": hs.subject.name,
-            "employee_short": hs.subject.teacher,
-            "study_type": hs.subject.study_type,
-            "subgroup": hs.subject.subgroup,
-        }
+        format_subject_response(hs.subject)
         for hs in hidden_subjects
     ]
 
