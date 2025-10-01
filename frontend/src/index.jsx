@@ -8,7 +8,7 @@ export function App() {
     const [loading, setLoading] = useState(true);
     const [authChecked, setAuthChecked] = useState(false);
     const [showArchiveLink, setShowArchiveLink] = useState(false);
-    const [showHidden, setShowHidden] = useState(false);
+    const [currentView, setCurrentView] = useState('schedule'); // 'schedule' | 'hidden'
     const apiUrl = import.meta.env.VITE_API_URL;
 
     const startY = useRef(0);
@@ -33,6 +33,32 @@ export function App() {
             .catch(() => setLoading(false));
     }, [authChecked]);
 
+    // Керування Back Button
+    useEffect(() => {
+        if (!window.Telegram?.WebApp) return;
+
+        const backButton = window.Telegram.WebApp.BackButton;
+
+        const handleBackButton = () => {
+            setCurrentView('schedule');
+            setShowArchiveLink(false);
+        };
+
+        // Очищуємо попередні слухачі перед додаванням нового
+        backButton.offClick(handleBackButton);
+
+        if (currentView === 'hidden') {
+            backButton.onClick(handleBackButton);
+            backButton.show();
+        } else {
+            backButton.hide();
+        }
+
+        return () => {
+            backButton.offClick(handleBackButton);
+        };
+    }, [currentView]);
+
     const loadHiddenSubjects = () => {
         if (!window.Telegram?.WebApp) return;
         const initData = window.Telegram.WebApp.initData;
@@ -47,16 +73,18 @@ export function App() {
     };
 
     const handleDelete = (itemToDelete) => {
-        setData(prevData => prevData.filter(item => {
-            // Перевіряємо чи співпадають всі характеристики
-            const disciplineMatch = item.discipline === itemToDelete.discipline;
-            const teacherMatch = (item.employee_short || '') === (itemToDelete.employee_short || '');
-            const typeMatch = item.study_type === itemToDelete.study_type;
-            const subgroupMatch = (item.subgroup || null) === (itemToDelete.subgroup || null);
-            
-            // Якщо всі характеристики співпадають - видаляємо (повертаємо false)
-            return !(disciplineMatch && teacherMatch && typeMatch && subgroupMatch);
-        }));
+        if (currentView === 'schedule') {
+            setData(prevData => prevData.filter(item => {
+                const disciplineMatch = item.discipline === itemToDelete.discipline;
+                const teacherMatch = (item.employee_short || '') === (itemToDelete.employee_short || '');
+                const typeMatch = item.study_type === itemToDelete.study_type;
+                const subgroupMatch = (item.subgroup || null) === (itemToDelete.subgroup || null);
+                
+                return !(disciplineMatch && teacherMatch && typeMatch && subgroupMatch);
+            }));
+        } else {
+            setHiddenData(prevData => prevData.filter(item => item.id !== itemToDelete.id));
+        }
     };
 
     const handleTouchStart = (e) => {
@@ -66,6 +94,8 @@ export function App() {
     };
 
     const handleTouchMove = (e) => {
+        if (currentView === 'hidden') return; // Не показувати меню архіва на сторінці прихованих
+        
         const currentY = e.touches[0].clientY;
         const deltaY = currentY - lastY.current;
 
@@ -82,37 +112,46 @@ export function App() {
 
     const handleTouchEnd = () => {};
 
-	if (loading)
-		return (
-			<div class="flex flex-col gap-4">
-				{['Понеділок', 'Вівторок'].map((day, index) => (
-					<div key={index} class="flex flex-col gap-3">
-						{/* Імітація назви дати */}
-						<div class="mx-3 mt-3 h-5 w-26 bg-gray-300 px-3 pt-3 rounded animate-pulse"></div>
-						{/* Імітація 5 предметів */}
-						{Array.from({ length: 5 }).map((_, i) => (
-							<div key={i} class="h-[185px] bg-gray-200 rounded-xl animate-pulse"></div>
-						))}
-					</div>
-				))}
-			</div>
-		);
+    if (loading) {
+        if (currentView === 'hidden') {
+            return (
+                <div class="flex flex-col gap-3 mt-3">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} class="h-[120px] bg-section px-3 pt-3 rounded-xl animate-pulse"></div>
+                    ))}
+                </div>
+            );
+        }
 
-
-    if (showHidden) {
         return (
-            <div class="flex flex-col gap-3 p-3">
-                <button 
-                    class="mb-3 text-blue-500 font-medium" 
-                    onClick={() => setShowHidden(false)}
-                >
-                    ← Назад
-                </button>
+            <div class="flex flex-col gap-4">
+                {['Понеділок', 'Вівторок'].map((day, index) => (
+                    <div key={index} class="flex flex-col gap-3">
+                        <div class="mx-3 mt-3 h-5 w-26 bg-section px-3 pt-3 rounded animate-pulse"></div>
+                        {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} class="h-[185px] bg-section rounded-xl animate-pulse"></div>
+                        ))}
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    if (currentView === 'hidden') {
+        return (
+            <div class="flex flex-col gap-3 mt-3">
                 {hiddenData.length === 0 ? (
-                    <p>Немає прихованих предметів</p>
+                    <p class="text-center text-subtitle mt-10">Немає прихованих предметів</p>
                 ) : (
                     hiddenData.map((item, i) => (
-                        <Card key={i} {...item} apiUrl={apiUrl} isCardDragging={isCardDragging} />
+                        <Card 
+                            key={i} 
+                            {...item} 
+                            apiUrl={apiUrl} 
+                            isCardDragging={isCardDragging}
+                            onDelete={() => handleDelete(item)}
+                            isHiddenView={true}
+                        />
                     ))
                 )}
             </div>
@@ -140,7 +179,7 @@ export function App() {
                         class="text-link text-sm font-medium"
                         onClick={(e) => { 
                             e.preventDefault(); 
-                            setShowHidden(true); 
+                            setCurrentView('hidden'); 
                             loadHiddenSubjects(); 
                         }}
                     >
@@ -161,6 +200,7 @@ export function App() {
                             apiUrl={apiUrl}
                             isCardDragging={isCardDragging}
                             onDelete={() => handleDelete(item)}
+                            isHiddenView={false}
                         />
                     ))}
                 </div>

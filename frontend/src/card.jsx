@@ -1,6 +1,7 @@
 import { useState, useRef } from 'preact/hooks';
 
 export function Card({
+    id,
     discipline,
     employee_short,
     study_time,
@@ -12,6 +13,7 @@ export function Card({
     onDelete,
     apiUrl,
     isCardDragging,
+    isHiddenView = false,
 }) {
     const [dragX, setDragX] = useState(0);
     const [dragging, setDragging] = useState(false);
@@ -57,42 +59,73 @@ export function Card({
     const handleTouchEnd = async () => {
         if (direction.current === 'horizontal' && dragX <= -150 && !requestSent.current) {
             requestSent.current = true;
+
             try {
                 const initData = window.Telegram?.WebApp?.initData;
-                const res = await fetch(`${apiUrl}/hide_subject`, {
+                const endpoint = isHiddenView ? '/unhide_subject' : '/hide_subject';
+                
+                const res = await fetch(`${apiUrl}${endpoint}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${initData}`,
                     },
                     body: JSON.stringify({
+                        id: id,
                         name: discipline,
                         teacher: employee_short || '',
                         study_type,
                         subgroup: subgroup || null,
                     }),
                 });
+
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 onDelete && onDelete();
             } catch (err) {
-                console.error('Failed to hide subject:', err);
-                alert('Не вдалося приховати предмет');
+                console.error('Failed to update subject:', err);
+                alert(`Не вдалося ${isHiddenView ? 'відновити' : 'приховати'} предмет`);
             }
         }
 
         setDragX(0);
         setDragging(false);
         direction.current = null;
-        isCardDragging.current = false; // скидаємо стан після свайпу
+        isCardDragging.current = false;
         requestSent.current = false;
     };
 
+    // Компактний вигляд для прихованих предметів (без деталей розкладу)
+    if (isHiddenView) {
+        return (
+            <div class="relative w-full">
+                <div class="absolute inset-0 flex items-center justify-end pr-10 bg-green-500 rounded-xl z-0">
+                    <span class="text-white font-bold text-xl">↪️</span>
+                </div>
+                <div
+                    class="relative rounded-xl p-5 flex flex-col gap-1 shadow bg-section z-10"
+                    style={{
+                        transform: `translateX(${dragX}px)`,
+                        transition: dragging ? 'none' : 'transform 0.3s ease',
+                    }}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                >
+                    <h2 class="text-base font-medium text-title">{discipline}</h2>
+                    <p class="text-sm text-subtitle">{employee_short || 'Викладач невідомий'}</p>
+                    <p class="text-sm text-subtitle">📘 {study_type}</p>
+                    {subgroup && <p class="text-sm text-subtitle">👥 Підгрупа {subgroup}</p>}
+                </div>
+            </div>
+        );
+    }
+
+    // Повний вигляд для розкладу
     return (
         <div class="relative w-full">
             <div class="absolute inset-0 flex items-center justify-end pr-10 bg-red-500 rounded-xl z-0">
                 <span class="text-white font-bold text-xl">🗑️</span>
             </div>
-
             <div
                 class="relative rounded-xl p-5 flex flex-col gap-1 shadow bg-section z-10"
                 style={{
@@ -105,11 +138,14 @@ export function Card({
             >
                 <h2 class="text-base font-medium text-title">{discipline}</h2>
                 <p class="text-sm text-subtitle">{employee_short || 'Викладач невідомий'}</p>
-                <p class="text-sm text-subtitle">
-                    🕑 {study_time} ({study_time_begin} – {study_time_end})
-                </p>
-                <p class="text-sm text-subtitle">📍 {cabinet}</p>
+                {study_time && (
+                    <p class="text-sm text-subtitle">
+                        🕑 {study_time} ({study_time_begin} – {study_time_end})
+                    </p>
+                )}
+                {cabinet && <p class="text-sm text-subtitle">📍 {cabinet}</p>}
                 <p class="text-sm text-subtitle">📘 {study_type}</p>
+                {subgroup && <p class="text-sm text-subtitle">👥 Підгрупа {subgroup}</p>}
             </div>
         </div>
     );
