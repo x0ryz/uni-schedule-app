@@ -1,8 +1,9 @@
 import json
 from datetime import date, timedelta
+from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
@@ -11,11 +12,24 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from telegram_webapp_auth.auth import WebAppUser
 
-from src.auth import get_current_user
+from src.dependencies import get_or_create_user
 from src.database import get_session
 from src.models import Subject, User, UserHiddenSubject
 
-app = FastAPI()
+from src.config import settings
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.http_client = httpx.AsyncClient(
+        timeout=30.0,
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
+    )
+    
+    yield
+    
+    await app.state.http_client.aclose()
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,7 +39,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-BASE_URL = "https://vnz.osvita.net/WidgetSchedule.asmx/GetScheduleDataX"
 
 today = date.today()
 days_until_saturday = (5 - today.weekday()) % 7
@@ -33,37 +46,6 @@ if days_until_saturday == 0:
     days_until_saturday = 7  
 
 end_week = today + timedelta(days=days_until_saturday)
-
-
-async def get_user_from_db(telegram_id: int, session: AsyncSession) -> User:
-    """Get user from database by telegram_id"""
-    result = await session.execute(
-        select(User)    
-        .where(User.telegram_id == telegram_id)
-        .options(selectinload(User.group))
-    )
-    user_in_db = result.scalar_one_or_none()
-    
-    if not user_in_db:
-        raise HTTPException(status_code=404, detail="User not found in DB")
-    
-    return user_in_db
-
-
-async def ensure_user_exists(user: WebAppUser, session: AsyncSession) -> User:
-    """Ensure that the user exists in the database, create if not"""
-    result = await session.execute(
-        select(User).where(User.telegram_id == user.id)
-    )
-    user_in_db = result.scalar_one_or_none()
-
-    if not user_in_db:
-        user_in_db = User(telegram_id=user.id, username=user.username)
-        session.add(user_in_db)
-        await session.commit()
-        await session.refresh(user_in_db)
-    
-    return user_in_db
 
 
 def format_subject_response(subject: Subject) -> dict:
@@ -79,28 +61,21 @@ def format_subject_response(subject: Subject) -> dict:
 
 @app.get("/schedule")
 async def get_schedule(
+    request: Request,
     aStartDate: str = today.strftime("%d.%m.%Y"),
     aEndDate: str = end_week.strftime("%d.%m.%Y"),
-    user: WebAppUser = Depends(get_current_user),
+    user: WebAppUser = Depends(get_or_create_user),
     session: AsyncSession = Depends(get_session)
 ):
-    user_in_db = await get_user_from_db(user.id, session)
 
-    if not user_in_db.group_id:
+    if not user.group_id:
         raise HTTPException(status_code=400, detail="User has no group assigned")
     
-    group = user_in_db.group
-
-    hidden_result = await session.execute(
-        select(UserHiddenSubject)
-        .where(UserHiddenSubject.user_id == user_in_db.id)
-        .options(selectinload(UserHiddenSubject.subject))
-    )
-    hidden_subjects = hidden_result.scalars().all()
+    group = user.group
     
     hidden_subjects_set = {
         (hs.subject.name, hs.subject.teacher, hs.subject.study_type, hs.subject.subgroup)
-        for hs in hidden_subjects
+        for hs in user.hidden_subjects
     }
 
     params = {
@@ -121,9 +96,8 @@ async def get_schedule(
         "Upgrade-Insecure-Requests": "1",
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(BASE_URL, params=params, headers=headers)
-        text = resp.text
+    resp = await request.app.state.http_client.get(settings.api_url, params=params, headers=headers)
+    text = resp.text
 
     try:
         data = json.loads(text)
@@ -146,117 +120,80 @@ async def get_schedule(
     return filtered
 
 
-@app.post("/auth")
-async def authenticate_user(
-    user: WebAppUser = Depends(get_current_user), 
-    session: AsyncSession = Depends(get_session)
-):
-    user_in_db = await ensure_user_exists(user, session)
-    return {"ok": True, "username": user_in_db.username}
-
-
 class SubjectRequest(BaseModel):
     name: str
     teacher: str
     study_type: str
     subgroup: str | None = None
-
+    
 
 @app.post("/hide_subject")
 async def hide_subject(
     request: SubjectRequest,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    user: User = Depends(get_or_create_user),
+    session: AsyncSession = Depends(get_session),
 ):
-    name = request.name
-    teacher = request.teacher
-    study_type = request.study_type
-    subgroup = request.subgroup
-
-    user_in_db = await get_user_from_db(user.id, session)
-
-    result = await session.execute(
-        select(Subject)
-        .where(Subject.name == name)
-        .where(Subject.teacher == teacher)
-        .where(Subject.study_type == study_type)
-        .where(Subject.subgroup == subgroup)
-        .where(Subject.group_id == user_in_db.group.id)
+    exists = any(
+        hs.subject.name == request.name
+        and hs.subject.teacher == request.teacher
+        and hs.subject.study_type == request.study_type
+        and hs.subject.subgroup == request.subgroup
+        for hs in user.hidden_subjects
     )
-    subject_in_db: Subject | None = result.scalar_one_or_none()
-
-    if not subject_in_db:
-        subject_in_db = Subject(
-            name=name, 
-            teacher=teacher, 
-            study_type=study_type, 
-            subgroup=subgroup, 
-            group_id=user_in_db.group.id
-        )
-        session.add(subject_in_db)
-        await session.commit()
-        await session.refresh(subject_in_db)
-
-    hidden = UserHiddenSubject(user_id=user_in_db.id, subject_id=subject_in_db.id)
-    session.add(hidden)
-    try:
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
+    if exists:
         raise HTTPException(status_code=400, detail="Subject already hidden")
 
-    return {"message": f"Subject '{name}' hidden for user {user_in_db.username}"}
-
-
-@app.get('/get_hidden_subjects')
-async def get_hidden_subjects(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
-):
-    user_in_db = await get_user_from_db(user.id, session)
-
     result = await session.execute(
-        select(UserHiddenSubject)
-        .where(UserHiddenSubject.user_id == user_in_db.id)
-        .options(selectinload(UserHiddenSubject.subject))
+        select(Subject).where(
+            Subject.name == request.name,
+            Subject.teacher == request.teacher,
+            Subject.study_type == request.study_type,
+            Subject.subgroup == request.subgroup,
+            Subject.group_id == user.group.id
+        )
     )
-    hidden_subjects: list[UserHiddenSubject] = result.scalars().all()
+    subject = result.scalar_one_or_none()
 
-    response = [
-        format_subject_response(hs.subject)
-        for hs in hidden_subjects
-    ]
+    if not subject:
+        subject = Subject(
+            name=request.name,
+            teacher=request.teacher,
+            study_type=request.study_type,
+            subgroup=request.subgroup,
+            group_id=user.group.id
+        )
+        session.add(subject)
+        await session.commit()
+        await session.refresh(subject)
 
-    return {"hidden_subjects": response}
+    hidden = UserHiddenSubject(user_id=user.id, subject_id=subject.id)
+    session.add(hidden)
+    await session.commit()
+    await session.refresh(hidden)
 
+    return {"message": f"Subject '{request.name}' hidden for user {user.username}"}
+
+
+@app.get("/get_hidden_subjects")
+async def get_hidden_subjects(user: User = Depends(get_or_create_user)):
+    return [format_subject_response(hs.subject) for hs in user.hidden_subjects]
 
 @app.post("/unhide_subject")
-async def restore_subject(
+async def unhide_subject(
     request: SubjectRequest,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    user: User = Depends(get_or_create_user),
+    session: AsyncSession = Depends(get_session),
 ):
-    user_in_db = await get_user_from_db(user.id, session)
-
-    result = await session.execute(
-        select(Subject)
-        .where(Subject.name == request.name)
-        .where(Subject.teacher == request.teacher)
-        .where(Subject.study_type == request.study_type)
-        .where(Subject.subgroup == request.subgroup)
-        .where(Subject.group_id == user_in_db.group.id)
+    hidden_subject = next(
+        (
+            hs for hs in user.hidden_subjects
+            if hs.subject.name == request.name
+            and hs.subject.teacher == request.teacher
+            and hs.subject.study_type == request.study_type
+            and hs.subject.subgroup == request.subgroup
+        ),
+        None
     )
-    subject_in_db: Subject | None = result.scalar_one_or_none()
-
-    if not subject_in_db:
-        raise HTTPException(status_code=404, detail="Subject not found")
-
-    result = await session.execute(
-        select(UserHiddenSubject)
-        .where(UserHiddenSubject.user_id == user_in_db.id)
-        .where(UserHiddenSubject.subject_id == subject_in_db.id)
-    )
-    hidden_subject: UserHiddenSubject | None = result.scalar_one_or_none()
 
     if not hidden_subject:
         raise HTTPException(status_code=400, detail="Subject is not hidden")
@@ -264,4 +201,4 @@ async def restore_subject(
     await session.delete(hidden_subject)
     await session.commit()
 
-    return {"message": f"Subject '{request.name}' restored for user {user_in_db.username}"}
+    return {"message": f"Subject '{request.name}' restored for user {user.username}"}

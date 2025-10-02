@@ -21,9 +21,14 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     username: Mapped[str] = mapped_column(String, nullable=False)
-
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=True)
+    
     group: Mapped["Group"] = relationship(back_populates="users")
+    hidden_subjects: Mapped[list["UserHiddenSubject"]] = relationship(
+        "UserHiddenSubject",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
 class Subject(Base):
     __tablename__ = "subjects"
@@ -44,6 +49,7 @@ class UserHiddenSubject(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), nullable=False)
 
+    user: Mapped["User"] = relationship("User", back_populates="hidden_subjects")
     subject: Mapped["Subject"] = relationship("Subject")
 
     __table_args__ = (

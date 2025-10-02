@@ -6,7 +6,6 @@ export function App() {
     const [data, setData] = useState([]);
     const [hiddenData, setHiddenData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [authChecked, setAuthChecked] = useState(false);
     const [showArchiveLink, setShowArchiveLink] = useState(false);
     const [currentView, setCurrentView] = useState('schedule');
     const apiUrl = import.meta.env.VITE_API_URL;
@@ -16,20 +15,14 @@ export function App() {
     const scrollTop = useRef(0);
     const isCardDragging = useRef(false);
 
-    useEffect(() => {
-        if (!window.Telegram?.WebApp) return;
-        const initData = window.Telegram.WebApp.initData;
-        fetch(`${apiUrl}/auth`, { method: 'POST', headers: { Authorization: `Bearer ${initData}` } })
-            .then(() => setAuthChecked(true))
-            .catch(() => setAuthChecked(true));
-    }, []);
-
     const fetchSchedule = async () => {
         if (!window.Telegram?.WebApp) return;
         setLoading(true);
         const initData = window.Telegram.WebApp.initData;
         try {
-            const res = await fetch(`${apiUrl}/schedule`, { headers: { Authorization: `Bearer ${initData}` } });
+            const res = await fetch(`${apiUrl}/schedule`, { 
+                headers: { Authorization: `Bearer ${initData}` } 
+            });
             const json = await res.json();
             setData(json);
         } catch (err) {
@@ -44,9 +37,11 @@ export function App() {
         setLoading(true);
         const initData = window.Telegram.WebApp.initData;
         try {
-            const res = await fetch(`${apiUrl}/get_hidden_subjects`, { headers: { Authorization: `Bearer ${initData}` } });
+            const res = await fetch(`${apiUrl}/get_hidden_subjects`, { 
+                headers: { Authorization: `Bearer ${initData}` } 
+            });
             const json = await res.json();
-            setHiddenData(json.hidden_subjects);
+            setHiddenData(json);
         } catch (err) {
             console.error('Помилка завантаження прихованих предметів', err);
         } finally {
@@ -55,10 +50,10 @@ export function App() {
     };
 
     useEffect(() => {
-        if (authChecked && currentView === 'schedule') {
+        if (currentView === 'schedule') {
             fetchSchedule();
         }
-    }, [authChecked, currentView]);
+    }, [currentView]);
 
     useEffect(() => {
         if (!window.Telegram?.WebApp) return;
@@ -81,7 +76,6 @@ export function App() {
 
         return () => backButton.offClick();
     }, [currentView]);
-
 
     const handleDelete = (itemToDelete) => {
         if (currentView === 'schedule') {
