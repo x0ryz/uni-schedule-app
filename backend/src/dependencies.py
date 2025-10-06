@@ -23,11 +23,11 @@ async def get_or_create_user(
     )
     user_in_db = result.scalar_one_or_none()
 
-    hidden_subjects_set = {
-        (hs.subject.name, hs.subject.teacher, hs.subject.study_type, hs.subject.subgroup)
-        for hs in user_in_db.hidden_subjects
-    }
-    print("------------------------------", hidden_subjects_set)
+    # hidden_subjects_set = {
+    #     (hs.subject.name, hs.subject.teacher, hs.subject.study_type, hs.subject.subgroup)
+    #     for hs in user_in_db.hidden_subjects
+    # }
+    # print("------------------------------", hidden_subjects_set)
     
     if not user_in_db:
         user_in_db = User(

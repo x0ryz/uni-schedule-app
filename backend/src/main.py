@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     
     await app.state.http_client.aclose()
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, root_path="/api")
 
 app.add_middleware(
     CORSMiddleware,
