@@ -11,8 +11,8 @@ class Group(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     site_id: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    faculty: Mapped[str] = mapped_column(String)
-    semester: Mapped[int] = mapped_column(Integer)
+    faculty: Mapped[str] = mapped_column(String, nullable=True)
+    semester: Mapped[int] = mapped_column(Integer, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="group")
     subjects: Mapped[list["Subject"]] = relationship(back_populates="group")

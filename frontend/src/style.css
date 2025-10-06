@@ -9,6 +9,8 @@
     --color-subtitle: var(--tg-theme-subtitle-text-color);
     --color-header: var(--tg-theme-section-header-text-color);
     --color-link: var(--tg-theme-link-color);
+    --color-accent: var(--tg-theme-accent-text-color);
+    --color-button: var(--tg-theme-button-color);
   }
 
   :root {
