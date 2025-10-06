@@ -14,7 +14,8 @@ from telegram_webapp_auth.auth import WebAppUser
 
 from src.dependencies import get_or_create_user
 from src.database import get_session
-from src.models import Subject, User, UserHiddenSubject
+from src.models import Subject, User, UserHiddenSubject, Group
+from src.auth import get_current_user
 
 from src.config import settings
 
@@ -202,3 +203,38 @@ async def unhide_subject(
     await session.commit()
 
     return {"message": f"Subject '{request.name}' restored for user {user.username}"}
+
+@app.get("/groups")
+async def get_groups(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Group))
+    groups = result.scalars().all()
+
+    return groups
+
+class SetGroupRequest(BaseModel):
+    group_id: str
+
+@app.post("/set-group")
+async def set_user_group(
+    data: SetGroupRequest,
+    session: AsyncSession = Depends(get_session),
+    web_app_user: WebAppUser = Depends(get_current_user)
+):
+    result = await session.execute(
+        select(User).where(User.telegram_id == web_app_user.id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    group_result = await session.execute(
+        select(Group).where(Group.site_id == data.group_id)
+    )
+    group = group_result.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    user.group_id = group.id
+    await session.commit()
+    return {"detail": "Group set successfully"}

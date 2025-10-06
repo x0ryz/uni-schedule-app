@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -37,5 +37,11 @@ async def get_or_create_user(
         session.add(user_in_db)
         await session.commit()
         await session.refresh(user_in_db)
+
+    if not user_in_db.group:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="User group not set. Frontend should prompt for group selection."
+        )
     
     return user_in_db
