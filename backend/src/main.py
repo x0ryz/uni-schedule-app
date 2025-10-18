@@ -40,15 +40,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-today = date.today()
-days_until_saturday = (5 - today.weekday()) % 7
-if days_until_saturday == 0:
-    days_until_saturday = 7  
-
-end_week = today + timedelta(days=days_until_saturday)
-
-
 def format_subject_response(subject: Subject) -> dict:
     """Format subject for API response"""
     return {
@@ -59,15 +50,24 @@ def format_subject_response(subject: Subject) -> dict:
         "subgroup": subject.subgroup,
     }
 
-
 @app.get("/schedule")
 async def get_schedule(
     request: Request,
-    aStartDate: str = today.strftime("%d.%m.%Y"),
-    aEndDate: str = end_week.strftime("%d.%m.%Y"),
-    user: WebAppUser = Depends(get_or_create_user),
-    session: AsyncSession = Depends(get_session)
+    aStartDate: str | None = None,
+    aEndDate: str | None = None,
+    user: WebAppUser = Depends(get_or_create_user)
 ):
+    today = date.today()
+
+    days_until_saturday = (5 - today.weekday()) % 7
+    if days_until_saturday == 0:
+        days_until_saturday = 7
+    end_week = today + timedelta(days=days_until_saturday)
+
+    if not aStartDate:
+        aStartDate = today.strftime("%d.%m.%Y")
+    if not aEndDate:
+        aEndDate = end_week.strftime("%d.%m.%Y")
 
     if not user.group_id:
         raise HTTPException(status_code=400, detail="User has no group assigned")
